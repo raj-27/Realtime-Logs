@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Dynamic Realtime Logs</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #111;
+            color: #ddd;
+            padding: 1rem;
+        }
+
+        .log-entry {
+            background: #1b1b1b;
+            /* border-left: 4px solid #00b894; */
+            margin: 6px 0;
+            padding: 12px;
+            border-radius: 6px;
+            transition: 0.2s;
+        }
+
+        .log-entry:hover {
+            transform: scale(1.01);
+            /* box-shadow: 0 0 10px #00b89466; */
+        }
+
+        .timestamp {
+            color: #888;
+            font-size: 0.85em;
+            margin-top: 6px;
+            display: block;
+        }
+
+        .field {
+            display: inline-block;
+            margin-right: 12px;
+            margin-top: 4px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: #222;
+        }
+
+        .status-success {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+
+        .status-error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        .status-pending {
+            color: #f1c40f;
+            font-weight: bold;
+        }
+
+        .amount {
+            color: #3498db;
+            font-weight: bold;
+        }
+
+        /* Log level colors for heading */
+        .log-info {
+            color: #2ecc71;
+        }
+
+        .log-warn {
+            color: #f1c40f;
+        }
+
+        .log-error {
+            color: #e74c3c;
+        }
+
+        /* Stats panel style */
+        #stats {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #222;
+            border-radius: 6px;
+        }
+
+        #stats span {
+            margin-right: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>📜 Dynamic Realtime Logs</h2>
+
+    <div id="stats">
+        <span>Total Logs: <span id="total-count">0</span></span>
+        <span>Info: <span id="info-count">0</span></span>
+        <span>Warning: <span id="warn-count">0</span></span>
+        <span>Error: <span id="error-count">0</span></span>
+    </div>
+
+    <div id="log-container"></div>
+
+    <script>
+        const container = document.getElementById('log-container');
+        const eventSource = new EventSource('http://localhost:3000/event-stream');
+
+        // Stats counters
+        const totalCountElem = document.getElementById('total-count');
+        const infoCountElem = document.getElementById('info-count');
+        const warnCountElem = document.getElementById('warn-count');
+        const errorCountElem = document.getElementById('error-count');
+
+        let totalLogs = 0, infoLogs = 0, warnLogs = 0, errorLogs = 0;
+
+        eventSource.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                const div = document.createElement('div');
+                div.className = 'log-entry';
+
+                // Determine border and shadow color by status
+                let status = (data.status ?? '').toUpperCase();
+                let borderColor, shadowColor;
+                if (status === 'SUCCESS') {
+                    borderColor = '#2ecc71';
+                    shadowColor = '#2ecc7140';
+                } else if (status === 'ERROR') {
+                    borderColor = '#e74c3c';
+                    shadowColor = '#e74c3c40';
+                } else if (status === 'PENDING') {
+                    borderColor = '#f1c40f';
+                    shadowColor = '#f1c40f40';
+                } else {
+                    borderColor = '#00b894';
+                    shadowColor = '#00b89466';
+                }
+                div.style.borderLeft = `4px solid ${borderColor}`;
+                div.style.boxShadow = `0 0 10px ${shadowColor}`;
+
+                // Dynamic fields
+                let fieldsHtml = '';
+                for (const key in data) {
+                    if (key === 'message' || key === 'timestamp' || key === 'level') continue;
+                    let value = data[key];
+                    let className = 'field';
+                    if (key.toLowerCase().includes('status')) {
+                        const st = ('' + value).toUpperCase();
+                        className += st === 'SUCCESS' ? ' status-success' :
+                            st === 'ERROR' ? ' status-error' :
+                                ' status-pending';
+                    }
+                    if (key.toLowerCase().includes('amount')) className += ' amount';
+                    fieldsHtml += `<span class="${className}"><b>${key}:</b> ${value}</span>`;
+                }
+
+                // Color by log level
+                let logLevel = (data.level ?? 'info').toLowerCase();
+                let levelClass =
+                    logLevel === 'error' ? 'log-error' :
+                        logLevel === 'warn' ? 'log-warn' :
+                            'log-info';
+
+                div.innerHTML = `
+                    <div class="${levelClass}"><b>${logLevel.toUpperCase()}</b>: ${data.message}</div>
+                    <div>${fieldsHtml}</div>
+                    <div class="timestamp">${data.timestamp ?? new Date().toISOString()}</div>
+                `;
+
+                container.prepend(div);
+
+                // Update counts
+                totalLogs++;
+                switch (logLevel) {
+                    case 'info': infoLogs++; break;
+                    case 'warn': warnLogs++; break;
+                    case 'error': errorLogs++; break;
+                }
+                totalCountElem.textContent = totalLogs;
+                infoCountElem.textContent = infoLogs;
+                warnCountElem.textContent = warnLogs;
+                errorCountElem.textContent = errorLogs;
+
+                // Limit logs to last 50
+                if (container.children.length > 50) container.removeChild(container.lastChild);
+
+            } catch {
+                const div = document.createElement('div');
+                div.className = 'log-entry';
+                div.textContent = e.data;
+                container.prepend(div);
+            }
+        };
+    </script>
+</body>
+
+</html>
